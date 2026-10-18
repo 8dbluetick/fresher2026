@@ -343,7 +343,7 @@ export const App: React.FC = () => {
                 src={SITE_CONFIG.logo} 
                 alt={SITE_CONFIG.logoAlt}
                 onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = 'tgpcop-media-logo.jpg';
+                  (e.currentTarget as HTMLImageElement).src = SITE_CONFIG.logoFallback;
                 }}
               />
             </div>
@@ -647,8 +647,11 @@ export const App: React.FC = () => {
               <div className="media-grid">
                 <div className="media-item">
                   <img 
-                    src="/tgpcop-media-logo.png" 
-                    alt="TGPCOP Media Official Brand" 
+                    src={SITE_CONFIG.logo} 
+                    alt={SITE_CONFIG.logoAlt}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = SITE_CONFIG.logoFallback;
+                    }}
                   />
                   <div className="overlay">
                     <span>Echo TGPCOP Media</span>
