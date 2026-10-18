@@ -67,6 +67,14 @@ label{display:block;font-size:11px;letter-spacing:.18em;text-transform:uppercase
 input,select{width:100%;padding:13px 14px;border-radius:12px;border:2px solid transparent;background:#fff;color:var(--ink);font:500 15px Inter;outline:0}
 input:focus,select:focus{border-color:var(--lime);box-shadow:0 0 0 4px rgba(198,255,26,.3)}
 .err{color:var(--lime);font-size:12px;min-height:16px;margin-top:4px}
+.info-msg{background:rgba(198,255,26,0.15);border:1px solid var(--lime);color:var(--lime);padding:10px 12px;border-radius:10px;font-size:12px;margin:10px 0;text-align:center;line-height:1.4}
+.otp-box{background:rgba(0,0,0,0.25);border:1px solid rgba(198,255,26,0.3);border-radius:14px;padding:16px;margin:12px 0;text-align:center}
+.otp-input{font-family:monospace,Inter,sans-serif!important;font-size:24px!important;letter-spacing:0.3em!important;text-align:center!important;font-weight:700!important}
+.otp-meta{font-size:12px;opacity:0.95;margin-bottom:12px;line-height:1.5}
+.otp-meta b{color:var(--lime)}
+.otp-actions{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px}
+.text-btn{background:none;border:none;color:var(--lime);cursor:pointer;font-size:12px;text-decoration:underline;padding:4px}
+.text-btn:disabled{opacity:0.5;cursor:not-allowed;text-decoration:none}
 #regOnly{display:block}
 .done{display:none;text-align:center;padding:10px 0}
 .done .big{font-family:Anton;font-size:44px;color:var(--lime);animation:zoom .7s both}

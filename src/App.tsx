@@ -3,8 +3,10 @@ import confetti from 'canvas-confetti';
 import { 
   getConfig, 
   getExistingRegistration, 
-  registerStudent, 
-  signInStudent, 
+  sendEmailOtp,
+  verifyOtpAndRegister,
+  verifyOtpAndSignIn,
+  saveRegistrationDetails,
   signOutStudent, 
   type RegistrationData,
   isSupabaseConfigured
@@ -29,8 +31,16 @@ export const App: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [batch, setBatch] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+
+  // OTP State
+  const [otpSent, setOtpSent] = useState<boolean>(false);
+  const [otpCode, setOtpCode] = useState<string>('');
+  const [resendTimer, setResendTimer] = useState<number>(0);
+  const [needsDetails, setNeedsDetails] = useState<boolean>(false);
+
+  // Feedback State
   const [err, setErr] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [registration, setRegistration] = useState<RegistrationData | null>(null);
 
@@ -96,6 +106,15 @@ export const App: React.FC = () => {
     init();
   }, []);
 
+  // Resend OTP countdown timer
+  useEffect(() => {
+    if (resendTimer <= 0) return;
+    const interval = setInterval(() => {
+      setResendTimer((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendTimer]);
+
   // Countdown ticker
   useEffect(() => {
     const tick = () => {
@@ -148,18 +167,25 @@ export const App: React.FC = () => {
     return () => io.disconnect();
   }, [registration]);
 
-  // Handle Form Submit (Connects to Supabase)
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Switch tabs
+  const handleTabSwitch = (newMode: 'up' | 'in') => {
+    setMode(newMode);
+    setOtpSent(false);
+    setOtpCode('');
+    setNeedsDetails(false);
+    setErr('');
+    setInfoMsg('');
+  };
+
+  // Step 1: Send OTP to Email
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr('');
+    setInfoMsg('');
 
     const emailTrim = email.trim();
     if (!/^\S+@\S+\.\S+$/.test(emailTrim)) {
-      setErr("Valid email daalo.");
-      return;
-    }
-    if (password.length < 6) {
-      setErr("Password kam se kam 6 characters ka rakho.");
+      setErr("Valid email address enter karo.");
       return;
     }
 
@@ -167,7 +193,7 @@ export const App: React.FC = () => {
       const nameTrim = name.trim();
       const phoneTrim = phone.trim();
       if (nameTrim.length < 2) {
-        setErr("Apna naam daalo.");
+        setErr("Apna poora naam daalo.");
         return;
       }
       if (!/^[0-9]{10}$/.test(phoneTrim)) {
@@ -175,54 +201,145 @@ export const App: React.FC = () => {
         return;
       }
       if (!["2023", "2024", "2025", "2026"].includes(batch)) {
-        setErr("Batch select karo.");
+        setErr("Batch select karo (2023, 2024, 2025, ya 2026).");
         return;
       }
+    }
 
-      setIsSubmitting(true);
-      try {
-        const reg = await registerStudent({
-          fullName: nameTrim,
-          phone: phoneTrim,
+    setIsSubmitting(true);
+    try {
+      const res = await sendEmailOtp(emailTrim);
+      setOtpSent(true);
+      setResendTimer(60);
+      setInfoMsg(res.message || `6-digit OTP aapke email (${emailTrim}) par bhej diya gaya hai!`);
+    } catch (ex: any) {
+      console.error("Send OTP error:", ex);
+      setErr(ex.message || "OTP bhejte waqt problem aayi. Email check karo.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Step 2: Verify OTP
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr('');
+    setInfoMsg('');
+
+    const tokenTrim = otpCode.trim();
+    if (tokenTrim.length < 6) {
+      setErr("Email par aaya hua 6-digit OTP code enter karo.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (mode === "up") {
+        const reg = await verifyOtpAndRegister({
+          email: email.trim(),
+          token: tokenTrim,
+          fullName: name.trim(),
+          phone: phone.trim(),
           batch: parseInt(batch, 10),
-          email: emailTrim,
-          password: password,
         });
         setRegistration(reg);
         triggerConfetti();
-      } catch (ex: any) {
-        console.error("Registration error:", ex);
-        setErr(ex.message || "Kuch gadbad ho gayi, dobara try karo.");
-      } finally {
-        setIsSubmitting(false);
-      }
-    } else {
-      // Login Mode
-      setIsSubmitting(true);
-      try {
-        const reg = await signInStudent({
-          email: emailTrim,
-          password: password,
+      } else {
+        // Login mode
+        const reg = await verifyOtpAndSignIn({
+          email: email.trim(),
+          token: tokenTrim,
         });
+
         if (reg) {
           setRegistration(reg);
           triggerConfetti();
         } else {
-          setErr("Login successful, but no registration was found.");
+          setNeedsDetails(true);
+          setInfoMsg("Email verify ho gaya! Apni details fill karke registration complete karo.");
         }
-      } catch (ex: any) {
-        console.error("Login error:", ex);
-        setErr(ex.message || "Login failed, please check your credentials.");
-      } finally {
-        setIsSubmitting(false);
       }
+    } catch (ex: any) {
+      console.error("Verify OTP error:", ex);
+      setErr(ex.message || "Galat ya expired OTP. Dobara check karo.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  // Step 3 (Optional if user logged in via OTP but has no record in DB yet)
+  const handleCompleteDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr('');
+
+    const nameTrim = name.trim();
+    const phoneTrim = phone.trim();
+    if (nameTrim.length < 2) {
+      setErr("Apna poora naam daalo.");
+      return;
+    }
+    if (!/^[0-9]{10}$/.test(phoneTrim)) {
+      setErr("10 digit mobile number daalo.");
+      return;
+    }
+    if (!["2023", "2024", "2025", "2026"].includes(batch)) {
+      setErr("Batch select karo.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const reg = await saveRegistrationDetails({
+        fullName: nameTrim,
+        phone: phoneTrim,
+        batch: parseInt(batch, 10),
+        email: email.trim(),
+      });
+      setRegistration(reg);
+      setNeedsDetails(false);
+      triggerConfetti();
+    } catch (ex: any) {
+      console.error("Save details error:", ex);
+      setErr(ex.message || "Registration save karne mein dikkat aayi.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Resend OTP handler
+  const handleResendOtp = async () => {
+    if (resendTimer > 0 || isSubmitting) return;
+    setErr('');
+    setInfoMsg('');
+    setIsSubmitting(true);
+    try {
+      const res = await sendEmailOtp(email.trim());
+      setResendTimer(60);
+      setInfoMsg(res.message || "Naya OTP bhej diya gaya hai!");
+    } catch (ex: any) {
+      setErr(ex.message || "Resend OTP failed. Thodi der baad try karo.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Back to edit details
+  const handleBackToEdit = () => {
+    setOtpSent(false);
+    setOtpCode('');
+    setErr('');
+    setInfoMsg('');
+  };
+
+  // Sign out
   const handleSignOut = async () => {
     await signOutStudent();
     setRegistration(null);
-    setPassword('');
+    setOtpSent(false);
+    setOtpCode('');
+    setNeedsDetails(false);
+    setErr('');
+    setInfoMsg('');
   };
 
   return (
@@ -278,6 +395,7 @@ export const App: React.FC = () => {
           <p className="batch">Batch 26</p>
         </div>
 
+        {/* Countdown card */}
         <section className="card rv">
           <p className="lbl" id="cdLabel">
             {isRevealed ? "Date is out!" : "Date reveal in"}
@@ -305,103 +423,208 @@ export const App: React.FC = () => {
           </a>
         </section>
 
+        {/* Registration Section */}
         <section className="card rv" id="register">
           <h2>Join the <span>Party</span></h2>
 
           {!registration ? (
             <div id="formBox">
-              <div className="tabs">
-                <button 
-                  type="button"
-                  className={mode === 'up' ? 'on' : ''} 
-                  onClick={() => { setMode('up'); setErr(''); }}
-                >
-                  Sign up
-                </button>
-                <button 
-                  type="button"
-                  className={mode === 'in' ? 'on' : ''} 
-                  onClick={() => { setMode('in'); setErr(''); }}
-                >
-                  Login
-                </button>
-              </div>
+              {!needsDetails && (
+                <div className="tabs">
+                  <button 
+                    type="button"
+                    className={mode === 'up' ? 'on' : ''} 
+                    onClick={() => handleTabSwitch('up')}
+                  >
+                    Sign up
+                  </button>
+                  <button 
+                    type="button"
+                    className={mode === 'in' ? 'on' : ''} 
+                    onClick={() => handleTabSwitch('in')}
+                  >
+                    Login
+                  </button>
+                </div>
+              )}
 
-              <form id="f" onSubmit={handleSubmit} noValidate>
-                {mode === 'up' && (
-                  <div id="regOnly">
-                    <label htmlFor="name">Full name</label>
+              {infoMsg && <div className="info-msg">{infoMsg}</div>}
+
+              {/* CASE 1: Need Registration Details (After Login OTP when user is new) */}
+              {needsDetails ? (
+                <form onSubmit={handleCompleteDetails} noValidate>
+                  <label htmlFor="name">Full name</label>
+                  <input 
+                    id="name" 
+                    autoComplete="name" 
+                    placeholder="Enter your full name" 
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+
+                  <label htmlFor="phone">Mobile number</label>
+                  <input 
+                    id="phone" 
+                    inputMode="numeric" 
+                    maxLength={10} 
+                    placeholder="10 digit mobile number" 
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                  />
+
+                  <label htmlFor="batch">Batch</label>
+                  <select 
+                    id="batch"
+                    value={batch}
+                    onChange={(e) => setBatch(e.target.value)}
+                  >
+                    <option value="">Select batch</option>
+                    <option value="2023">2023</option>
+                    <option value="2024">2024</option>
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                  </select>
+
+                  {err && <p className="err">{err}</p>}
+
+                  <button 
+                    className="btn" 
+                    type="submit" 
+                    style={{ marginTop: '16px' }}
+                    disabled={isSubmitting}
+                    onPointerDown={handleButtonRipple}
+                  >
+                    {isSubmitting ? 'Saving...' : 'Complete Registration'}
+                  </button>
+                </form>
+              ) : !otpSent ? (
+                /* CASE 2: Step 1 - Enter details & Request OTP */
+                <form onSubmit={handleSendOtp} noValidate>
+                  {mode === 'up' && (
+                    <div id="regOnly">
+                      <label htmlFor="name">Full name</label>
+                      <input 
+                        id="name" 
+                        autoComplete="name" 
+                        placeholder="Your full name" 
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                      />
+
+                      <label htmlFor="phone">Mobile number</label>
+                      <input 
+                        id="phone" 
+                        inputMode="numeric" 
+                        maxLength={10} 
+                        placeholder="10 digit mobile number" 
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                      />
+
+                      <label htmlFor="batch">Batch</label>
+                      <select 
+                        id="batch"
+                        value={batch}
+                        onChange={(e) => setBatch(e.target.value)}
+                      >
+                        <option value="">Select batch</option>
+                        <option value="2023">2023</option>
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                      </select>
+                    </div>
+                  )}
+
+                  <label htmlFor="email">Email address</label>
+                  <input 
+                    id="email" 
+                    type="email" 
+                    autoComplete="email" 
+                    placeholder="you@email.com" 
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+
+                  {err && <p className="err">{err}</p>}
+
+                  <button 
+                    className="btn" 
+                    type="submit" 
+                    style={{ marginTop: '16px' }}
+                    disabled={isSubmitting}
+                    onPointerDown={handleButtonRipple}
+                  >
+                    {isSubmitting 
+                      ? 'Sending OTP...' 
+                      : mode === 'up' ? 'Send Verification OTP' : 'Send Login OTP'
+                    }
+                  </button>
+                </form>
+              ) : (
+                /* CASE 3: Step 2 - Enter 6-digit OTP code */
+                <form onSubmit={handleVerifyOtp} noValidate>
+                  <div className="otp-box">
+                    <p className="otp-meta">
+                      Enter the 6-digit verification code sent to:<br />
+                      <b>{email}</b>
+                    </p>
+
+                    <label htmlFor="otp" style={{ textAlign: 'center', marginBottom: '8px' }}>
+                      6-DIGIT OTP CODE
+                    </label>
                     <input 
-                      id="name" 
-                      autoComplete="name" 
-                      placeholder="Your name" 
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      id="otp" 
+                      className="otp-input"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6} 
+                      placeholder="• • • • • •" 
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                      autoFocus
                     />
 
-                    <label htmlFor="phone">Mobile number</label>
-                    <input 
-                      id="phone" 
-                      inputMode="numeric" 
-                      maxLength={10} 
-                      placeholder="10 digit number" 
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                    />
+                    <div className="otp-actions">
+                      <button 
+                        type="button" 
+                        className="text-btn"
+                        onClick={handleBackToEdit}
+                      >
+                        ← Edit Details / Change Email
+                      </button>
 
-                    <label htmlFor="batch">Batch</label>
-                    <select 
-                      id="batch"
-                      value={batch}
-                      onChange={(e) => setBatch(e.target.value)}
-                    >
-                      <option value="">Select batch</option>
-                      <option value="2023">2023</option>
-                      <option value="2024">2024</option>
-                      <option value="2025">2025</option>
-                      <option value="2026">2026</option>
-                    </select>
+                      <button 
+                        type="button" 
+                        className="text-btn"
+                        disabled={resendTimer > 0 || isSubmitting}
+                        onClick={handleResendOtp}
+                      >
+                        {resendTimer > 0 ? `Resend OTP in ${resendTimer}s` : 'Resend OTP'}
+                      </button>
+                    </div>
                   </div>
-                )}
 
-                <label htmlFor="email">Email</label>
-                <input 
-                  id="email" 
-                  type="email" 
-                  autoComplete="email" 
-                  placeholder="you@email.com" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+                  {err && <p className="err">{err}</p>}
 
-                <label htmlFor="pw">Password</label>
-                <input 
-                  id="pw" 
-                  type="password" 
-                  autoComplete={mode === 'up' ? 'new-password' : 'current-password'} 
-                  placeholder="Min 6 characters" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-
-                {err && <p className="err" id="err">{err}</p>}
-
-                <button 
-                  className="btn" 
-                  type="submit" 
-                  id="go" 
-                  style={{ marginTop: '8px' }}
-                  disabled={isSubmitting}
-                  onPointerDown={handleButtonRipple}
-                >
-                  {isSubmitting 
-                    ? 'Processing...' 
-                    : mode === 'up' ? 'Register' : 'Login'
-                  }
-                </button>
-              </form>
+                  <button 
+                    className="btn" 
+                    type="submit" 
+                    style={{ marginTop: '12px' }}
+                    disabled={isSubmitting || otpCode.trim().length < 6}
+                    onPointerDown={handleButtonRipple}
+                  >
+                    {isSubmitting 
+                      ? 'Verifying...' 
+                      : mode === 'up' ? 'Verify OTP & Register' : 'Verify & Login'
+                    }
+                  </button>
+                </form>
+              )}
             </div>
           ) : (
+            /* CASE 4: Success Ticket */
             <div className="done" id="done" style={{ display: 'block' }}>
               <div className="big">YOU'RE IN!</div>
               <p style={{ marginTop: '8px', fontSize: '15px' }}>
@@ -409,13 +632,13 @@ export const App: React.FC = () => {
               </p>
 
               <div className="reg-details">
-                <p><b>Status:</b> <span style={{ color: '#c6ff1a' }}>Registered (Phase 1)</span></p>
+                <p><b>Status:</b> <span style={{ color: '#c6ff1a' }}>Verified & Registered</span></p>
                 <p><b>Batch:</b> {registration.batch}</p>
                 <p><b>Email:</b> {registration.email}</p>
                 <p><b>Phone:</b> {registration.phone}</p>
               </div>
 
-              <p>Registration done. Date reveal ka wait karo 🎉</p>
+              <p>Registration confirmed. Date reveal ka wait karo 🎉</p>
 
               <button
                 type="button"
@@ -441,9 +664,9 @@ export const App: React.FC = () => {
           {/* Database connection badge */}
           <div style={{ textAlign: 'center', marginTop: '16px', opacity: 0.6, fontSize: '10px', letterSpacing: '0.1em' }}>
             {isSupabaseConfigured ? (
-              <span style={{ color: '#c6ff1a' }}>● Supabase Cloud Connected</span>
+              <span style={{ color: '#c6ff1a' }}>● Supabase Live Connected (Email OTP Active)</span>
             ) : (
-              <span>○ Local Demo Mode (Set .env for Live Supabase)</span>
+              <span>○ Demo Mode (Demo OTP: 123456)</span>
             )}
           </div>
         </section>

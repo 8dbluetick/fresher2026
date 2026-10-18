@@ -57,6 +57,14 @@ CREATE POLICY "Users can insert their own registration"
     TO authenticated
     WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own registration" ON public.registrations;
+CREATE POLICY "Users can update their own registration"
+    ON public.registrations
+    FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can view their own registration" ON public.registrations;
 CREATE POLICY "Users can view their own registration"
     ON public.registrations

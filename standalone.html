@@ -139,7 +139,11 @@ footer b{color:var(--lime)}
   <h2>Join the <span>Party</span></h2>
   <div id="formBox">
     <div class="tabs"><button class="on" data-m="up">Sign up</button><button data-m="in">Login</button></div>
-    <form id="f" novalidate>
+    
+    <div id="infoMsg" style="display:none;background:rgba(198,255,26,0.15);border:1px solid var(--lime);color:var(--lime);padding:10px 12px;border-radius:10px;font-size:12px;margin:10px 0;text-align:center;line-height:1.4"></div>
+
+    <!-- Step 1 Form: Details & Send OTP -->
+    <form id="fDetails" novalidate>
       <div id="regOnly">
         <label for="name">Full name</label><input id="name" autocomplete="name" placeholder="Your name">
         <label for="phone">Mobile number</label><input id="phone" inputmode="numeric" maxlength="10" placeholder="10 digit number">
@@ -147,9 +151,25 @@ footer b{color:var(--lime)}
         <select id="batch"><option value="">Select batch</option><option>2023</option><option>2024</option><option>2025</option><option>2026</option></select>
       </div>
       <label for="email">Email</label><input id="email" type="email" autocomplete="email" placeholder="you@email.com">
-      <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" placeholder="Min 6 characters">
       <p class="err" id="err"></p>
-      <button class="btn" type="submit" id="go" style="margin-top:8px">Register</button>
+      <button class="btn" type="submit" id="goSendOtp" style="margin-top:12px">Send Verification OTP</button>
+    </form>
+
+    <!-- Step 2 Form: Enter 6-digit OTP -->
+    <form id="fOtp" style="display:none" novalidate>
+      <div style="background:rgba(0,0,0,0.25);border:1px solid rgba(198,255,26,0.3);border-radius:14px;padding:16px;margin:12px 0;text-align:center">
+        <p style="font-size:12px;opacity:0.95;margin-bottom:12px;line-height:1.5">
+          Enter 6-digit OTP sent to:<br><b id="otpTargetEmail" style="color:var(--lime)"></b>
+        </p>
+        <label for="otpCode" style="text-align:center;margin-bottom:8px">6-DIGIT OTP CODE</label>
+        <input id="otpCode" inputmode="numeric" maxlength="6" placeholder="• • • • • •" style="font-family:monospace,sans-serif;font-size:24px;letter-spacing:0.3em;text-align:center;font-weight:700">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px">
+          <button type="button" id="backBtn" style="background:none;border:none;color:var(--lime);cursor:pointer;text-decoration:underline">← Change Details</button>
+          <button type="button" id="resendBtn" style="background:none;border:none;color:var(--lime);cursor:pointer;text-decoration:underline">Resend OTP</button>
+        </div>
+      </div>
+      <p class="err" id="otpErr"></p>
+      <button class="btn" type="submit" id="goVerifyOtp" style="margin-top:10px">Verify OTP & Complete</button>
     </form>
   </div>
   <div class="done" id="done">
@@ -242,11 +262,44 @@ document.querySelectorAll(".rv").forEach(el=>io.observe(el));
 /* ---------- BUTTON RIPPLE ---------- */
 document.querySelectorAll(".btn").forEach(b=>b.addEventListener("pointerdown",e=>{const r=b.getBoundingClientRect(),s=document.createElement("span");s.className="rip";const d=Math.max(r.width,r.height);s.style.cssText=`width:${d}px;height:${d}px;left:${e.clientX-r.left-d/2}px;top:${e.clientY-r.top-d/2}px`;b.append(s);setTimeout(()=>s.remove(),600)}));
 
-/* ---------- AUTH + REGISTRATION (SUPABASE CONNECTED) ---------- */
+/* ---------- AUTH + EMAIL OTP (SUPABASE CONNECTED) ---------- */
 let mode="up";
+let resendTimer = 0;
+let resendInterval = null;
+
+function updateResendBtn() {
+  const btn = $("resendBtn");
+  if (resendTimer > 0) {
+    btn.textContent = `Resend in ${resendTimer}s`;
+    btn.disabled = true;
+    btn.style.opacity = "0.5";
+  } else {
+    btn.textContent = "Resend OTP";
+    btn.disabled = false;
+    btn.style.opacity = "1";
+  }
+}
+
+function startResendTimer() {
+  resendTimer = 60;
+  updateResendBtn();
+  if (resendInterval) clearInterval(resendInterval);
+  resendInterval = setInterval(() => {
+    resendTimer--;
+    updateResendBtn();
+    if (resendTimer <= 0) clearInterval(resendInterval);
+  }, 1000);
+}
+
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on");
-  mode=b.dataset.m; $("regOnly").style.display=mode==="up"?"block":"none"; $("go").textContent=mode==="up"?"Register":"Login"; $("err").textContent="";
+  mode=b.dataset.m;
+  $("regOnly").style.display = mode==="up" ? "block" : "none";
+  $("goSendOtp").textContent = mode==="up" ? "Send Verification OTP" : "Send Login OTP";
+  $("err").textContent = "";
+  $("infoMsg").style.display = "none";
+  $("fDetails").style.display = "block";
+  $("fOtp").style.display = "none";
 });
 
 function showRegisteredState(reg) {
@@ -255,7 +308,7 @@ function showRegisteredState(reg) {
   if ($("welcomeUser")) $("welcomeUser").textContent = `Welcome, ${reg.full_name}!`;
   if ($("regDetails")) {
     $("regDetails").innerHTML = `
-      <p><b>Status:</b> <span style="color:#c6ff1a">Registered (Phase 1)</span></p>
+      <p><b>Status:</b> <span style="color:#c6ff1a">Verified & Registered</span></p>
       <p><b>Batch:</b> ${reg.batch}</p>
       <p><b>Email:</b> ${reg.email}</p>
       <p><b>Phone:</b> ${reg.phone}</p>
@@ -285,59 +338,119 @@ if ($("logoutBtn")) {
     localStorage.removeItem("tgpcop_fresher_registered_user");
     $("done").style.display="none";
     $("formBox").style.display="block";
+    $("fDetails").style.display="block";
+    $("fOtp").style.display="none";
   };
 }
 
-$("f").addEventListener("submit",async e=>{
-  e.preventDefault(); const err=$("err"); err.textContent="";
-  const v={name:$("name").value.trim(),phone:$("phone").value.trim(),batch:$("batch").value,email:$("email").value.trim(),pw:$("pw").value};
-  if(!/^\S+@\S+\.\S+$/.test(v.email)) return err.textContent="Valid email daalo.";
-  if(v.pw.length<6) return err.textContent="Password kam se kam 6 characters ka rakho.";
-  if(mode==="up"){
-    if(v.name.length<2) return err.textContent="Apna naam daalo.";
-    if(!/^[0-9]{10}$/.test(v.phone)) return err.textContent="10 digit mobile number daalo.";
-    if(!["2023","2024","2025","2026"].includes(v.batch)) return err.textContent="Batch select karo.";
+$("backBtn").onclick = () => {
+  $("fOtp").style.display = "none";
+  $("fDetails").style.display = "block";
+  $("err").textContent = "";
+};
+
+$("resendBtn").onclick = async () => {
+  if (resendTimer > 0) return;
+  const email = $("email").value.trim();
+  $("otpErr").textContent = "";
+  try {
+    if (sb) {
+      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+      if (error) throw error;
+    }
+    startResendTimer();
+    $("infoMsg").textContent = "Naya 6-digit OTP email par bhej diya gaya hai!";
+    $("infoMsg").style.display = "block";
+  } catch(ex) {
+    $("otpErr").textContent = ex.message || "Resend failed.";
+  }
+};
+
+// Send OTP
+$("fDetails").addEventListener("submit", async e => {
+  e.preventDefault();
+  const err = $("err"); err.textContent = "";
+  const email = $("email").value.trim();
+  const name = $("name").value.trim();
+  const phone = $("phone").value.trim();
+  const batch = $("batch").value;
+
+  if (!/^\S+@\S+\.\S+$/.test(email)) return err.textContent = "Valid email daalo.";
+
+  if (mode === "up") {
+    if (name.length < 2) return err.textContent = "Apna naam daalo.";
+    if (!/^[0-9]{10}$/.test(phone)) return err.textContent = "10 digit mobile number daalo.";
+    if (!["2023","2024","2025","2026"].includes(batch)) return err.textContent = "Batch select karo.";
   }
 
-  $("go").textContent = "Processing...";
-  try{
+  $("goSendOtp").textContent = "Sending OTP...";
+  try {
     if (sb) {
-      if(mode==="up"){
-        const {data, error} = await sb.auth.signUp({email:v.email, password:v.pw}); 
-        if(error) throw error;
-        const {data: regRow, error: e2} = await sb.from("registrations").insert({
+      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+      if (error) throw error;
+    }
+    $("otpTargetEmail").textContent = email;
+    $("fDetails").style.display = "none";
+    $("fOtp").style.display = "block";
+    startResendTimer();
+    $("infoMsg").textContent = `6-digit OTP ${email} par bhej diya gaya hai!`;
+    $("infoMsg").style.display = "block";
+  } catch(ex) {
+    err.textContent = ex.message || "OTP bhejte waqt problem aayi.";
+  } finally {
+    $("goSendOtp").textContent = mode==="up" ? "Send Verification OTP" : "Send Login OTP";
+  }
+});
+
+// Verify OTP
+$("fOtp").addEventListener("submit", async e => {
+  e.preventDefault();
+  const err = $("otpErr"); err.textContent = "";
+  const email = $("email").value.trim();
+  const name = $("name").value.trim();
+  const phone = $("phone").value.trim();
+  const batch = $("batch").value;
+  const token = $("otpCode").value.trim();
+
+  if (token.length < 6) return err.textContent = "6-digit OTP code enter karo.";
+
+  $("goVerifyOtp").textContent = "Verifying...";
+  try {
+    if (sb) {
+      const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+      if (error) throw error;
+
+      if (mode === "up") {
+        const { data: regRow, error: e2 } = await sb.from("registrations").upsert({
           user_id: data.user.id,
-          full_name: v.name,
-          email: v.email,
-          phone: v.phone,
-          batch: +v.batch
-        }).select().single();
-        if(e2) throw e2;
+          full_name: name,
+          email: email,
+          phone: phone,
+          batch: +batch
+        }, { onConflict: 'user_id' }).select().single();
+        if (e2) throw e2;
         showRegisteredState(regRow);
       } else {
-        const {data, error} = await sb.auth.signInWithPassword({email:v.email, password:v.pw}); 
-        if(error) throw error;
-        const {data: regRow, error: e2} = await sb.from("registrations").select("*").eq("user_id", data.user.id).single();
-        if(e2) throw new Error("Registration not found for this account.");
+        const { data: regRow, error: e2 } = await sb.from("registrations").select("*").eq("user_id", data.user.id).single();
+        if (e2) throw new Error("No registration found for this account.");
         showRegisteredState(regRow);
       }
     } else {
+      // Demo mode
       const reg = {
-        full_name: mode === "up" ? v.name : (v.email.split("@")[0]),
-        email: v.email,
-        phone: mode === "up" ? v.phone : "9876543210",
-        batch: mode === "up" ? v.batch : "2026"
+        full_name: mode === "up" ? name : email.split("@")[0],
+        email: email,
+        phone: mode === "up" ? phone : "9876543210",
+        batch: mode === "up" ? batch : "2026"
       };
       localStorage.setItem("tgpcop_fresher_registered_user", JSON.stringify(reg));
       showRegisteredState(reg);
     }
-    $("formBox").style.display="none"; 
-    $("done").style.display="block"; 
     confetti();
-  }catch(ex){ 
-    err.textContent=ex.message||"Kuch gadbad ho gayi, dobara try karo."; 
+  } catch(ex) {
+    err.textContent = ex.message || "Galat ya expired OTP. Dobara check karo.";
   } finally {
-    $("go").textContent = mode==="up"?"Register":"Login";
+    $("goVerifyOtp").textContent = "Verify OTP & Complete";
   }
 });
 </script>

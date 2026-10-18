@@ -29,17 +29,6 @@ export interface AppConfig {
   event_date: string;
 }
 
-export interface CollaborationRequest {
-  id?: string;
-  name: string;
-  email: string;
-  phone: string;
-  event_type: string;
-  event_date: string;
-  details: string;
-  created_at?: string;
-}
-
 const DEFAULT_CONFIG: AppConfig = {
   reveal_at: '2026-11-01T10:00:00+05:30',
   event_date: 'DATE TO BE ANNOUNCED'
@@ -117,48 +106,67 @@ export async function getExistingRegistration(userId?: string): Promise<Registra
   return null;
 }
 
-// Student registration using Supabase Auth + registrations table
-export async function registerStudent(params: {
-  fullName: string;
-  email: string;
-  phone: string;
-  batch: number;
-  password?: string;
-}): Promise<RegistrationData> {
-  // Client-side validations
-  if (!params.fullName || params.fullName.trim().length < 2) {
-    throw new Error('Please enter your full name (minimum 2 characters).');
-  }
-  if (!/^\S+@\S+\.\S+$/.test(params.email.trim())) {
-    throw new Error('Please enter a valid email address.');
-  }
-  if (!/^[0-9]{10}$/.test(params.phone.trim())) {
-    throw new Error('Please enter a valid 10-digit mobile number.');
-  }
-  if (![2023, 2024, 2025, 2026].includes(params.batch)) {
-    throw new Error('Please select a valid college batch (2023 - 2026).');
+// 1. Send 6-digit Email OTP via Supabase Auth
+export async function sendEmailOtp(email: string): Promise<{ success: boolean; message: string }> {
+  if (!email || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+    throw new Error('Valid email address enter karo.');
   }
 
   if (supabase) {
-    // 1. Authenticate with Supabase Auth (ensures no plaintext password in database)
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        shouldCreateUser: true,
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message || 'OTP send karne mein issue hua. Please check email address.');
+    }
+
+    return {
+      success: true,
+      message: `6-digit OTP aapke email (${email}) par bhej diya gaya hai.`,
+    };
+  }
+
+  // Demo fallback
+  return {
+    success: true,
+    message: `[DEMO MODE] OTP simulated. Demo OTP: 123456`,
+  };
+}
+
+// 2. Verify Email OTP and Complete Student Registration
+export async function verifyOtpAndRegister(params: {
+  email: string;
+  token: string;
+  fullName: string;
+  phone: string;
+  batch: number;
+}): Promise<RegistrationData> {
+  if (!params.token || params.token.trim().length < 6) {
+    throw new Error('6-digit OTP code enter karo.');
+  }
+
+  if (supabase) {
+    // Verify OTP token with Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.verifyOtp({
       email: params.email.trim(),
-      password: params.password || 'TgpCop@2026',
+      token: params.token.trim(),
+      type: 'email',
     });
 
     if (authError) {
-      if (authError.message.toLowerCase().includes('already registered')) {
-        throw new Error('This email is already registered. Please switch to the Login tab.');
-      }
-      throw authError;
+      throw new Error(authError.message || 'Galat ya expired OTP. Dobara check karo.');
     }
 
     const userId = authData.user?.id;
     if (!userId) {
-      throw new Error('Unable to retrieve authenticated user ID from Supabase.');
+      throw new Error('User authentication verification failed.');
     }
 
-    // 2. Insert into registrations table (verified by database)
+    // Insert into registrations table
     const regPayload = {
       user_id: userId,
       full_name: params.fullName.trim(),
@@ -169,25 +177,22 @@ export async function registerStudent(params: {
 
     const { data: regData, error: regError } = await supabase
       .from('registrations')
-      .insert(regPayload)
+      .upsert(regPayload, { onConflict: 'user_id' })
       .select()
       .single();
 
     if (regError) {
-      if (regError.code === '23505' || regError.message?.includes('duplicate key')) {
-        throw new Error('You have already registered for Fresher\'s Party with this account.');
-      }
       throw new Error(`Database error: ${regError.message}`);
-    }
-
-    if (!regData) {
-      throw new Error('Registration could not be confirmed by the database.');
     }
 
     return regData;
   }
 
-  // Local fallback demo mode
+  // Demo fallback
+  if (params.token.trim() !== '123456' && params.token.trim().length !== 6) {
+    throw new Error('Invalid demo OTP. Use 123456.');
+  }
+
   const mockRegistration: RegistrationData = {
     id: 'reg-' + Date.now(),
     user_id: 'mock-user-' + Date.now(),
@@ -201,19 +206,24 @@ export async function registerStudent(params: {
   return mockRegistration;
 }
 
-// Student sign in
-export async function signInStudent(params: {
+// 3. Verify OTP for Login
+export async function verifyOtpAndSignIn(params: {
   email: string;
-  password?: string;
+  token: string;
 }): Promise<RegistrationData | null> {
+  if (!params.token || params.token.trim().length < 6) {
+    throw new Error('6-digit OTP code enter karo.');
+  }
+
   if (supabase) {
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabase.auth.verifyOtp({
       email: params.email.trim(),
-      password: params.password || 'TgpCop@2026',
+      token: params.token.trim(),
+      type: 'email',
     });
 
     if (authError) {
-      throw authError;
+      throw new Error(authError.message || 'Galat ya expired OTP.');
     }
 
     const userId = authData.user?.id;
@@ -223,7 +233,7 @@ export async function signInStudent(params: {
     return reg;
   }
 
-  // Local demo fallback
+  // Demo fallback
   const localReg = localStorage.getItem('tgpcop_fresher_registered_user');
   if (localReg) {
     const parsed = JSON.parse(localReg);
@@ -234,6 +244,80 @@ export async function signInStudent(params: {
   throw new Error('No registration found for this email in demo mode. Please Sign Up first.');
 }
 
+// 4. Save/Update Registration Details (for authenticated user)
+export async function saveRegistrationDetails(params: {
+  fullName: string;
+  phone: string;
+  batch: number;
+  email: string;
+}): Promise<RegistrationData> {
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User authenticate nahi hua hai. Pehle OTP verify karo.');
+    }
+
+    const regPayload = {
+      user_id: user.id,
+      full_name: params.fullName.trim(),
+      email: params.email.trim(),
+      phone: params.phone.trim(),
+      batch: params.batch,
+    };
+
+    const { data, error } = await supabase
+      .from('registrations')
+      .upsert(regPayload, { onConflict: 'user_id' })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Database error: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  const mockRegistration: RegistrationData = {
+    id: 'reg-' + Date.now(),
+    user_id: 'mock-user-' + Date.now(),
+    full_name: params.fullName.trim(),
+    email: params.email.trim(),
+    phone: params.phone.trim(),
+    batch: params.batch,
+    created_at: new Date().toISOString()
+  };
+  localStorage.setItem('tgpcop_fresher_registered_user', JSON.stringify(mockRegistration));
+  return mockRegistration;
+}
+
+// Backward compatibility helpers
+export async function registerStudent(params: {
+  fullName: string;
+  phone: string;
+  batch: number;
+  email: string;
+  password?: string;
+}): Promise<RegistrationData> {
+  return verifyOtpAndRegister({
+    email: params.email,
+    token: '123456',
+    fullName: params.fullName,
+    phone: params.phone,
+    batch: params.batch,
+  });
+}
+
+export async function signInStudent(params: {
+  email: string;
+  password?: string;
+}): Promise<RegistrationData | null> {
+  return verifyOtpAndSignIn({
+    email: params.email,
+    token: '123456',
+  });
+}
+
 // Student sign out
 export async function signOutStudent(): Promise<void> {
   if (supabase) {
@@ -242,45 +326,3 @@ export async function signOutStudent(): Promise<void> {
   localStorage.removeItem('tgpcop_fresher_registered_user');
 }
 
-// Submit Media Collaboration Request
-export async function submitCollaboration(data: {
-  name: string;
-  email: string;
-  phone: string;
-  eventType: string;
-  eventDate: string;
-  details: string;
-}): Promise<void> {
-  if (!data.name || data.name.trim().length < 2) {
-    throw new Error('Please enter your name / club name.');
-  }
-  if (!/^\S+@\S+\.\S+$/.test(data.email.trim())) {
-    throw new Error('Please enter a valid email.');
-  }
-  if (!/^[0-9]{10}$/.test(data.phone.trim())) {
-    throw new Error('Please enter a valid 10-digit phone number.');
-  }
-
-  if (supabase) {
-    const { error } = await supabase
-      .from('media_collaborations')
-      .insert({
-        name: data.name.trim(),
-        email: data.email.trim(),
-        phone: data.phone.trim(),
-        event_type: data.eventType,
-        event_date: data.eventDate,
-        details: data.details.trim(),
-      });
-
-    if (error) {
-      throw new Error(`Collaboration request failed: ${error.message}`);
-    }
-    return;
-  }
-
-  // Local demo save
-  const existingCollabs = JSON.parse(localStorage.getItem('tgpcop_media_collabs') || '[]');
-  existingCollabs.push({ ...data, created_at: new Date().toISOString() });
-  localStorage.setItem('tgpcop_media_collabs', JSON.stringify(existingCollabs));
-}
