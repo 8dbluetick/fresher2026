@@ -248,17 +248,17 @@ export const App: React.FC = () => {
         <header>
           <div className="badge">
             <img 
-              src="council-emblem.png" 
-              alt="TGPCOP Students Council" 
+              src="https://res.cloudinary.com/axgam8br/image/upload/v1792348294/tgpcop_media_logo.jpg" 
+              alt="TGPCOP Media" 
               onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = '/council-emblem.png';
+                (e.currentTarget as HTMLImageElement).src = '/tgpcop_media_logo.jpg';
               }}
             />
           </div>
           <p>
             Tulsiramji Gaikwad-Patil<br />
             College of Pharmacy
-            <b>TGPCOP Students Council</b>
+            <b>TGPCOP MEDIA</b>
           </p>
         </header>
 
@@ -303,19 +303,6 @@ export const App: React.FC = () => {
           >
             {registration ? "View Registration" : "Register now"}
           </a>
-        </section>
-
-        <section className="about rv">
-          <h2>About the <span style={{ color: '#1429e0' }}>Council</span></h2>
-          <p>Representing the voice of students, fostering leadership, innovation, academic excellence and campus engagement.</p>
-          <img 
-            className="icons" 
-            src="council-pillars-icons.png" 
-            alt="Academic Growth, Student Representation, Campus Engagement, Innovation and Initiatives" 
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = '/council-pillars-icons.png';
-            }}
-          />
         </section>
 
         <section className="card rv" id="register">
@@ -462,9 +449,9 @@ export const App: React.FC = () => {
         </section>
 
         <footer className="rv">
-          <p>Instagram <b>@tgpcop.council</b></p>
-          <p>www.tgpcopcouncil.online</p>
-          <p>Together We <b>Lead.</b> Together We <b>Inspire.</b></p>
+          <p>Captured & Presented by <b>TGPCOP MEDIA</b></p>
+          <p>www.tgpcopmedia.online</p>
+          <p>Together We <b>Create.</b> Together We <b>Inspire.</b></p>
         </footer>
       </div>
     </>
