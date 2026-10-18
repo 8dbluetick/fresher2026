@@ -7,18 +7,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        'tgp-red': '#E50914',
-        'tgp-red-dark': '#B20710',
-        'tgp-black': '#111111',
-        'tgp-dark': '#0D0D0D',
-        'tgp-card': '#181818',
-        'tgp-card-border': 'rgba(255, 255, 255, 0.1)',
+        'tgp-blue': '#0A1FD6',
+        'tgp-blue-dark': '#0613A8',
+        'tgp-card': '#1429E0',
+        'tgp-lime': '#C6FF1A',
+        'tgp-ink': '#07107A',
         'tgp-white': '#FFFFFF',
       },
       fontFamily: {
-        display: ['Anton', 'Impact', 'sans-serif'],
+        anton: ['Anton', 'Impact', 'sans-serif'],
         cinzel: ['Cinzel', 'serif'],
-        script: ['Caveat', 'cursive'],
+        caveat: ['Caveat', 'cursive'],
         sans: ['Inter', 'system-ui', 'sans-serif']
       }
     },
