@@ -350,24 +350,6 @@ export const App: React.FC = () => {
           </a>
         </section>
 
-        {/* ABOUT THE COUNCIL STRIP */}
-        <section className="about rv">
-          <h2>
-            About the <span style={{ color: '#1429E0' }}>Council</span>
-          </h2>
-          <p>
-            Representing the voice of students, fostering leadership, innovation, academic excellence and campus engagement.
-          </p>
-          <img 
-            className="icons" 
-            src="/council-pillars-icons.png" 
-            alt="Academic Growth, Student Representation, Campus Engagement, Innovation & Initiatives"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = 'council-pillars-icons.png';
-            }}
-          />
-        </section>
-
         {/* REGISTER / LOGIN / YOU'RE IN SECTION */}
         <section className="card rv" id="register">
           <h2>
