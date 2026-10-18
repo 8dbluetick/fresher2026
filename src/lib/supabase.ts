@@ -15,6 +15,7 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
   : null;
 
 export interface RegistrationData {
+  id?: string;
   user_id?: string;
   full_name: string;
   email: string;
@@ -26,6 +27,17 @@ export interface RegistrationData {
 export interface AppConfig {
   reveal_at: string;
   event_date: string;
+}
+
+export interface CollaborationRequest {
+  id?: string;
+  name: string;
+  email: string;
+  phone: string;
+  event_type: string;
+  event_date: string;
+  details: string;
+  created_at?: string;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -93,7 +105,7 @@ export async function getExistingRegistration(userId?: string): Promise<Registra
     }
   }
 
-  // Local storage mock mode
+  // Local storage demo mode
   const localReg = localStorage.getItem('tgpcop_fresher_registered_user');
   if (localReg) {
     try {
@@ -105,7 +117,7 @@ export async function getExistingRegistration(userId?: string): Promise<Registra
   return null;
 }
 
-// User sign up + register
+// Student registration using Supabase Auth + registrations table
 export async function registerStudent(params: {
   fullName: string;
   email: string;
@@ -113,15 +125,28 @@ export async function registerStudent(params: {
   batch: number;
   password?: string;
 }): Promise<RegistrationData> {
+  // Client-side validations
+  if (!params.fullName || params.fullName.trim().length < 2) {
+    throw new Error('Please enter your full name (minimum 2 characters).');
+  }
+  if (!/^\S+@\S+\.\S+$/.test(params.email.trim())) {
+    throw new Error('Please enter a valid email address.');
+  }
+  if (!/^[0-9]{10}$/.test(params.phone.trim())) {
+    throw new Error('Please enter a valid 10-digit mobile number.');
+  }
+  if (![2023, 2024, 2025, 2026].includes(params.batch)) {
+    throw new Error('Please select a valid college batch (2023 - 2026).');
+  }
+
   if (supabase) {
-    // 1. Sign up with Supabase Auth
+    // 1. Authenticate with Supabase Auth (ensures no plaintext password in database)
     const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: params.email,
+      email: params.email.trim(),
       password: params.password || 'TgpCop@2026',
     });
 
     if (authError) {
-      // If user already registered in auth, attempt sign in
       if (authError.message.toLowerCase().includes('already registered')) {
         throw new Error('This email is already registered. Please switch to the Login tab.');
       }
@@ -130,15 +155,15 @@ export async function registerStudent(params: {
 
     const userId = authData.user?.id;
     if (!userId) {
-      throw new Error('Unable to retrieve authenticated user ID.');
+      throw new Error('Unable to retrieve authenticated user ID from Supabase.');
     }
 
-    // 2. Insert into registrations table
+    // 2. Insert into registrations table (verified by database)
     const regPayload = {
       user_id: userId,
-      full_name: params.fullName,
-      email: params.email,
-      phone: params.phone,
+      full_name: params.fullName.trim(),
+      email: params.email.trim(),
+      phone: params.phone.trim(),
       batch: params.batch,
     };
 
@@ -149,21 +174,26 @@ export async function registerStudent(params: {
       .single();
 
     if (regError) {
-      if (regError.code === '23505') {
-        throw new Error('You have already registered for Fresher\'s Party!');
+      if (regError.code === '23505' || regError.message?.includes('duplicate key')) {
+        throw new Error('You have already registered for Fresher\'s Party with this account.');
       }
-      throw regError;
+      throw new Error(`Database error: ${regError.message}`);
+    }
+
+    if (!regData) {
+      throw new Error('Registration could not be confirmed by the database.');
     }
 
     return regData;
   }
 
-  // Mock implementation for instant local testing
+  // Local fallback demo mode
   const mockRegistration: RegistrationData = {
+    id: 'reg-' + Date.now(),
     user_id: 'mock-user-' + Date.now(),
-    full_name: params.fullName,
-    email: params.email,
-    phone: params.phone,
+    full_name: params.fullName.trim(),
+    email: params.email.trim(),
+    phone: params.phone.trim(),
     batch: params.batch,
     created_at: new Date().toISOString()
   };
@@ -171,14 +201,14 @@ export async function registerStudent(params: {
   return mockRegistration;
 }
 
-// User sign in
+// Student sign in
 export async function signInStudent(params: {
   email: string;
   password?: string;
 }): Promise<RegistrationData | null> {
   if (supabase) {
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: params.email,
+      email: params.email.trim(),
       password: params.password || 'TgpCop@2026',
     });
 
@@ -193,21 +223,64 @@ export async function signInStudent(params: {
     return reg;
   }
 
-  // Mock implementation
+  // Local demo fallback
   const localReg = localStorage.getItem('tgpcop_fresher_registered_user');
   if (localReg) {
     const parsed = JSON.parse(localReg);
-    if (parsed.email.toLowerCase() === params.email.toLowerCase()) {
+    if (parsed.email.toLowerCase() === params.email.trim().toLowerCase()) {
       return parsed;
     }
   }
   throw new Error('No registration found for this email in demo mode. Please Sign Up first.');
 }
 
-// User sign out
+// Student sign out
 export async function signOutStudent(): Promise<void> {
   if (supabase) {
     await supabase.auth.signOut();
   }
   localStorage.removeItem('tgpcop_fresher_registered_user');
+}
+
+// Submit Media Collaboration Request
+export async function submitCollaboration(data: {
+  name: string;
+  email: string;
+  phone: string;
+  eventType: string;
+  eventDate: string;
+  details: string;
+}): Promise<void> {
+  if (!data.name || data.name.trim().length < 2) {
+    throw new Error('Please enter your name / club name.');
+  }
+  if (!/^\S+@\S+\.\S+$/.test(data.email.trim())) {
+    throw new Error('Please enter a valid email.');
+  }
+  if (!/^[0-9]{10}$/.test(data.phone.trim())) {
+    throw new Error('Please enter a valid 10-digit phone number.');
+  }
+
+  if (supabase) {
+    const { error } = await supabase
+      .from('media_collaborations')
+      .insert({
+        name: data.name.trim(),
+        email: data.email.trim(),
+        phone: data.phone.trim(),
+        event_type: data.eventType,
+        event_date: data.eventDate,
+        details: data.details.trim(),
+      });
+
+    if (error) {
+      throw new Error(`Collaboration request failed: ${error.message}`);
+    }
+    return;
+  }
+
+  // Local demo save
+  const existingCollabs = JSON.parse(localStorage.getItem('tgpcop_media_collabs') || '[]');
+  existingCollabs.push({ ...data, created_at: new Date().toISOString() });
+  localStorage.setItem('tgpcop_media_collabs', JSON.stringify(existingCollabs));
 }

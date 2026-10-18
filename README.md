@@ -1,78 +1,78 @@
-# Fresher's Party Web App (Phase 1)
-### Tulsiramji Gaikwad-Patil College of Pharmacy (TGPCOP Students Council)
-
-A mobile-first, high-energy event website built strictly following the Solasta visual theme and specifications.
+# TGPCOP MEDIA — Web Application & Event Hub
+Independent student-run creative and media collective covering campus life, events, photography, videography, reels, and design at Tulsiramji Gaikwad-Patil College of Pharmacy (TGPCOP).
 
 ---
 
-## 🎨 Theme & Visual Design
-- **Background**: Solid Royal / Electric Blue (`#0A1FD6` to `#0613A8` subtle vertical gradient) with a pulsing wireframe butterfly watermark behind the hero.
-- **Color Palette**: Royal Blue, Pure White, Neon Lime (`#C6FF1A`).
-- **Typography**:
-  - Hero Title: **FRESHER'S** in Anton (ultra-bold condensed), **PARTY** in neon lime.
-  - Event Line: Cinzel thin serif (*"THE FRESHERS PARTY OF"*), with *"Batch 26"* in Caveat neon lime script.
-  - Body: Inter sans-serif, letter-spaced uppercase labels.
-- **Logos & Badges**:
-  - Official Council Emblem in circular white badge with neon lime outline in header (`council-emblem.png`).
-  - Official 4 Pillars in a white rounded strip with authentic icons: Academic Growth, Student Representation, Campus Engagement, Innovation & Initiatives (`council-pillars-icons.png`).
-- **Animations**:
-  - Sliding bounce entrance for Hero text.
-  - Floating & rotating lime paint splatters.
-  - Pulsing wireframe butterfly watermark.
-  - Digit flip & second tick pulse on countdown.
-  - Confetti explosion in neon lime + white upon date reveal and student registration.
-  - Staggered scroll reveals and tap ripple effects on buttons.
-  - Full respect for `prefers-reduced-motion`.
+## 🎨 Brand Identity & Theme
+- **Brand**: TGPCOP MEDIA (Independent Student Creative Collective)
+- **Visual Direction**: Bold graffiti-inspired media branding using the official `tgpcop-media-logo.png` asset.
+- **Color Palette**:
+  - Primary Red: `#E50914`
+  - Dark / Pitch: `#0D0D0D` / `#111111`
+  - Pure White: `#FFFFFF`
+  - Muted Neutral: `#A8A8A8`
+- **Typography**: Anton display headers, Cinzel uppercase accents, Caveat script, and Inter for clean body copy.
+- **Structure**:
+  - **Header**: Responsive media-brand header with official graffiti logo badge. Council branding completely removed.
+  - **Dual Hub Navigation**:
+    1. **Fresher's Party**: Countdown, event reveal, student registration, and authenticated login.
+    2. **Media Showcase**: Photography gallery, reels/highlights, creative departments, and collaboration coverage request form.
+  - **Footer**: Media inquiries email, customizable Instagram handle (hidden until handle is finalized), and independent student collective disclaimer.
 
 ---
 
-## 🛠️ Tech Stack
-- **Framework**: React 18 + TypeScript + Vite
-- **Styling**: Tailwind CSS + Custom CSS Variables matching theme
-- **Database & Auth**: `@supabase/supabase-js` (with automatic local fallback for immediate testing)
-- **Visual FX**: Canvas Confetti + Custom SVG Splatters + Ripple engine
+## 🗄️ Supabase Backend & Database Migrations
+
+### 1. Run Migration Script
+In your **Supabase Dashboard** -> **SQL Editor**, run the contents of [`supabase_schema.sql`](./supabase_schema.sql):
+- **`config` table**:
+  - Public read enabled via Row Level Security (RLS).
+  - Admin write only.
+  - Controls countdown `reveal_at` and announcement `event_date`.
+- **`registrations` table**:
+  - Unique constraint on `user_id`.
+  - Check constraints on `full_name`, `email` format, 10-digit `phone`, and batch (`2023`, `2024`, `2025`, `2026`).
+  - Strict RLS: authenticated users can only insert and view their own registration row.
+- **`media_collaborations` table**:
+  - Public insert for student clubs/event coverage requests.
+  - RLS restricted read: only admins / service role can view inquiries.
 
 ---
 
-## 🚀 Getting Started
+## 🔐 Environment Variables for Vercel & Production
 
-### 1. Run Development Server
+In your **Vercel Project Settings** -> **Environment Variables**, add:
+
+| Variable Name | Description | Example |
+| :--- | :--- | :--- |
+| `VITE_SUPABASE_URL` | Your Supabase Project URL | `https://xyzproject.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | Your Supabase public anonymous key | `eyJhbGciOi...` |
+
+*(Note: Never place the Supabase `service_role` key in frontend environment variables. The client uses safe RLS-backed public anon keys.)*
+
+---
+
+## 🚀 Development & Build
+
+### Development Server
 ```bash
 npm run dev
 ```
-Open `http://localhost:5173` in your mobile browser or emulator.
+Runs at `http://localhost:5173`.
 
-### 2. Build for Production
+### Production Build
 ```bash
 npm run build
 ```
-Production assets will be output to the `dist/` directory.
+Compiled output is saved to `dist/`.
 
 ---
 
-## 🗄️ Supabase Setup & Configuration
-
-1. Open your **Supabase Dashboard** -> **SQL Editor**.
-2. Run the provided script: `supabase_schema.sql`.
-   - Creates the `config` table (`reveal_at`, `event_date`) with public read policy.
-   - Creates the `registrations` table with unique constraint on `user_id` and strict RLS (users can only insert and read their own registration).
-3. Copy your project URL and anon public key into `.env`:
-   ```env
-   VITE_SUPABASE_URL=https://your-project.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-key-here
-   ```
-4. Restart Vite (`npm run dev`).
-
-*(Note: If no Supabase credentials are configured, the application automatically operates in local demo mode using localStorage, allowing you to test the complete Sign Up, Login, Countdown, and "YOU'RE IN" registration card immediately.)*
-
----
-
-## 📄 File Directory Overview
-- `src/App.tsx` - Main interactive React component with countdown, tabs, registration & auth flows.
-- `src/lib/supabase.ts` - Supabase client, session listener, registration and config services.
-- `src/index.css` - Theme styles, keyframes, typography classes, and Tailwind directives.
-- `supabase_schema.sql` - Complete PostgreSQL schema and RLS policies for Supabase.
-- `standalone.html` - Self-contained single-file version that can be opened directly without a build step.
-- `public/`
-  - `council-emblem.png` - Official council badge logo.
-  - `council-pillars-icons.png` - Official 4 council pillar icons strip.
+## 📁 Key File Structure
+- `src/config/siteConfig.ts` - Central brand settings (name, logo, configurable Instagram handle, contact email).
+- `src/App.tsx` - Main interactive React app with dual tabs (Fresher's Party & Media Showcase).
+- `src/lib/supabase.ts` - Supabase client, auth, registration verification, and collaboration requests.
+- `src/index.css` - Custom styling with red/black/white theme, keyframe animations, and responsive layout.
+- `supabase_schema.sql` - Ready-to-run PostgreSQL schema with RLS policies.
+- `standalone.html` - Self-contained single-file version.
+- `public/tgpcop-media-logo.png` - Official TGPCOP Media graffiti logo.
